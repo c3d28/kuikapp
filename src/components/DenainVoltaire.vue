@@ -45,7 +45,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import sonometreBg from '@/assets/sonometre-bg.mov'
+import sonometreBg from '@/assets/sonometre-bg.mp4'
 import logoKrys from '@/assets/logo_krys_old.svg'
 
 
