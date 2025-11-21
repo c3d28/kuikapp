@@ -1,190 +1,466 @@
 <template>
-  <div class="sonometre-container" :style="{ backgroundImage: 'url(' + backgroundUrl + ')' }">
+  <div ref="root" class="sonometre-container">
+    <!-- video background -->
+    <video
+      v-if="backgroundUrl"
+      :src="backgroundUrl"
+      class="bg-video"
+      autoplay
+      loop
+      muted
+      playsinline
+      aria-hidden="true"
+    ></video>
+
     <div class="controls">
-      <button @click="toggleStartPause">{{ isRunning ? 'Pause' : 'Commencer' }}</button>
+      <!-- ...existing code... -->
     </div>
+
     <div class="volume-display">
-      <span
-        class="db-value"
-        :style="dbStyle"
-      >{{ volumeInt }} dB</span>
+      <img
+        :src="logoUrl"
+        alt="logo"
+        class="logo-img"
+        :class="{ blinking: cheatActive }"
+        :style="logoStyle"
+      />
+
+      <!-- égaliseur visuel (remplace la barre) -->
+      <div v-if="showBar" class="eq" :class="{ cheat: cheatActive }" aria-hidden="true">
+        <div
+          v-for="(h, i) in bars"
+          :key="i"
+          class="eq-bar"
+          :style="{ height: h + '%' }"
+        ></div>
+      </div>
+
+      <!-- barre de niveau, affichable / masquable par double "b" 
+      <div v-if="showBar" class="db-bar">
+        <div class="bar-fill" :class="{ blinking: cheatActive }" :style="barStyle"></div>
+      </div>-->
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import sonometreBg from '@/assets/sonometre-bg.png' // <-- Ajoute cette ligne
-const backgroundUrl = ref(sonometreBg)
+import sonometreBg from '@/assets/sonometre-bg.mov'
+import logoKrys from '@/assets/logo_krys_old.svg'
 
-const volume = ref(0)
+
+const backgroundUrl = ref(sonometreBg)
+const root = ref(null)
+const logoUrl = logoKrys
+
 const volumeInt = ref(0)
-const isRunning = ref(false)
+const isRunning = ref(true)
+const showDb = ref(true)
+const showBar = ref(true)
+
+// cheat / max state
+const cheatActive = ref(false)
+
+// track highest value of the session
+const sessionMax = ref(0)
+const cheatRamp = ref(0)
+const cheatTarget = ref(0)
+const CHEAT_LIMIT = 120
+
+// equalizer config
+const BARS = 16
+const bars = ref(new Array(BARS).fill(0))
+const _barsSmooth = new Array(BARS).fill(0)
+const BAR_SMOOTH_ALPHA = 0.22
+
+// logo sizing
+const logoMinSize = 500     // <-- augmenté (taille de départ)
+const LOGO_SCALE = 6.0      // <-- multiplicateur d'agrandissement par dB
+const logoLimit = 1400      // <-- plafond plus grand
+const logoMaxSize = ref(logoMinSize)
+const lastLogoMax = ref(logoMinSize)
 
 let audioCtx = null
 let analyser = null
 let source = null
+let gainNode = null
 let animationFrameId = null
 let stream = null
 
-// --- Fullscreen management ---
-const fullscreenActive = ref(false)
+// double-tap keys
+let lastXTime = 0
+let lastBTime = 0
 let lastFTime = 0
+const fullscreenActive = ref(false)
 
+function enterFullscreen(el) {
+  if (!el) return
+  const fn =
+    el.requestFullscreen ||
+    el.webkitRequestFullscreen ||
+    el.mozRequestFullScreen ||
+    el.msRequestFullscreen
+  if (fn) try { fn.call(el) } catch (e) {}
+}
+function exitFullscreen() {
+  const fn =
+    document.exitFullscreen ||
+    document.webkitExitFullscreen ||
+    document.mozCancelFullScreen ||
+    document.msExitFullscreen
+  if (fn) try { fn.call(document) } catch (e) {}
+}
+
+function onFullscreenChange() {
+  fullscreenActive.value = !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement
+  )
+}
+
+// update logo visual sizing (keeps previous "peak" behaviour)
+function updateLogoSize(currentDb) {
+  // apply stronger scaling, clamp to logoLimit
+  const newSize = Math.min(logoLimit, Math.round(logoMinSize + currentDb * LOGO_SCALE))
+  if (newSize > lastLogoMax.value) {
+    lastLogoMax.value = newSize
+    logoMaxSize.value = newSize
+  } else {
+    lastLogoMax.value = Math.max(logoMinSize, lastLogoMax.value * 0.9)
+    logoMaxSize.value = lastLogoMax.value
+  }
+}
 function onKeyDown(event) {
-  if (event.key.toLowerCase() === 'f') {
+  const key = event.key?.toLowerCase()
+  if (!key) return
+
+  if (key === 'x') {
+    const now = Date.now()
+    if (now - lastXTime < 500) {
+      if (!cheatActive.value) {
+        const computedTarget = Math.min(CHEAT_LIMIT, sessionMax.value + 15)
+        cheatTarget.value = computedTarget
+        cheatRamp.value = volumeInt.value
+        cheatActive.value = true
+      } else {
+        cheatActive.value = false
+      }
+      lastXTime = 0
+    } else lastXTime = now
+  }
+
+  if (key === 'b') {
+    const now = Date.now()
+    if (now - lastBTime < 500) {
+      showBar.value = !showBar.value
+      lastBTime = 0
+    } else lastBTime = now
+  }
+
+  if (key === 'f') {
     const now = Date.now()
     if (now - lastFTime < 500) {
-      // double press: exit fullscreen if active
-      if (fullscreenActive.value) {
-        document.exitFullscreen().catch(console.error)
-        fullscreenActive.value = false
-      }
+      if (!fullscreenActive.value) enterFullscreen(root.value)
+      else exitFullscreen()
       lastFTime = 0
-    } else {
-      // single press: enter fullscreen if not active
-      if (!fullscreenActive.value) {
-        document.documentElement.requestFullscreen().catch(console.error)
-        fullscreenActive.value = true
-      }
-      lastFTime = now
-    }
+    } else lastFTime = now
   }
 }
 
-// --- Volume update ---
+// style pour le logo (taille animée)
+const logoStyle = computed(() => ({
+  width: Math.round(logoMaxSize.value) + 'px',
+  height: Math.round(logoMaxSize.value) + 'px',
+  transition: cheatActive.value ? 'width 0.12s linear, height 0.12s linear, transform 0.12s' : 'width 0.22s ease, height 0.22s ease'
+}))
+
+// audio processing
+let smooth = 0
+const SMOOTH_ALPHA = 0.12
+const CHEAT_RAMP_FACTOR = 0.06
+
+
 function updateVolume() {
-  if (!analyser) return
-  const dataArray = new Uint8Array(analyser.frequencyBinCount)
-  analyser.getByteFrequencyData(dataArray)
-  let sum = 0
-  dataArray.forEach(v => sum += v)
-  const avg = sum / dataArray.length
-  volume.value = Math.min(Math.max(avg / 2.5, 0), 100)
-  volumeInt.value = Math.round(volume.value)
+  // cheat ramp: keep bars and logo ramping from current to target
+  if (cheatActive.value) {
+    cheatRamp.value += (cheatTarget.value - cheatRamp.value) * CHEAT_RAMP_FACTOR
+    const val = Math.round(cheatRamp.value)
+    volumeInt.value = val
+    if (volumeInt.value > sessionMax.value) sessionMax.value = volumeInt.value
+    updateLogoSize(volumeInt.value)
+    // set bars to high values (smooth appearance)
+    for (let i = 0; i < BARS; i++) {
+      _barsSmooth[i] += (100 - _barsSmooth[i]) * 0.18
+      bars.value[i] = Math.round(_barsSmooth[i])
+    }
+    animationFrameId = requestAnimationFrame(updateVolume)
+    return
+  }
+
+  if (!analyser) {
+    animationFrameId = requestAnimationFrame(updateVolume)
+    return
+  }
+
+  // frequency data -> realistic equalizer
+  const freq = new Uint8Array(analyser.frequencyBinCount)
+  analyser.getByteFrequencyData(freq)
+
+  // debug: uncomment to inspect freq data
+  // console.log('freq len', freq.length, 'max', Math.max(...freq))
+
+  // map frequency bins to BARS groups
+  const binsPerBar = Math.floor(freq.length / BARS) || 1
+  // if input is silent (all zeros) provide a subtle ambient motion so EQ doesn't freeze
+  const maxVal = Math.max(...freq)
+  if (maxVal === 0) {
+    for (let i = 0; i < BARS; i++) {
+      _barsSmooth[i] += (6 - _barsSmooth[i]) * 0.04
+      bars.value[i] = Math.round(_barsSmooth[i])
+    }
+  } else {
+    for (let i = 0; i < BARS; i++) {
+      let sum = 0
+      const start = i * binsPerBar
+      const end = Math.min(freq.length, start + binsPerBar)
+      for (let j = start; j < end; j++) sum += freq[j]
+      const avg = sum / (end - start || 1)
+      // avg is 0..255 -> map to 0..100
+      const pct = Math.min(100, Math.max(0, (avg / 255) * 100))
+      // per-bar smoothing (EMA)
+      _barsSmooth[i] = _barsSmooth[i] * (1 - BAR_SMOOTH_ALPHA) + pct * BAR_SMOOTH_ALPHA
+      bars.value[i] = Math.round(_barsSmooth[i])
+    }
+  }
+
+  // compute an overall db-like value from low/mid energy for logo sizing
+  // take average of lower/mid bands to represent loudness
+  const lowCount = Math.max(1, Math.floor(BARS * 0.6))
+  let sumLow = 0
+  for (let i = 0; i < lowCount; i++) sumLow += bars.value[i]
+  const loud = Math.round(sumLow / lowCount) // 0..100
+  // scale to CHEAT_LIMIT
+  const scaled = Math.min(CHEAT_LIMIT, Math.round((loud / 100) * CHEAT_LIMIT))
+  volumeInt.value = scaled
+  if (volumeInt.value > sessionMax.value) sessionMax.value = volumeInt.value
+  updateLogoSize(volumeInt.value)
+
   animationFrameId = requestAnimationFrame(updateVolume)
 }
 
 async function startAudio() {
   if (audioCtx && audioCtx.state === 'running') return
+  try {
+    // try to get raw mic data
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    })
 
-  if (!audioCtx) {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      audioCtx = new AudioContext()
-      source = audioCtx.createMediaStreamSource(stream)
-      analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 256
-      source.connect(analyser)
-    } catch (e) {
-      alert('Microphone inaccessible ou refusé.')
-      return
-    }
+    audioCtx = new AudioContext()
+    source = audioCtx.createMediaStreamSource(stream)
+
+    gainNode = audioCtx.createGain()
+    gainNode.gain.value = 4.0 // adjust if needed
+
+    analyser = audioCtx.createAnalyser()
+    // FFT size controls frequencyBinCount = fftSize / 2
+    // 1024 gives faster updates while keeping decent resolution
+    analyser.fftSize = 1024
+    analyser.smoothingTimeConstant = 0.6
+
+    source.connect(gainNode)
+    gainNode.connect(analyser)
+
+    // reset state
+    sessionMax.value = 0
+    lastLogoMax.value = logoMinSize
+    logoMaxSize.value = logoMinSize
+    for (let i = 0; i < BARS; i++) _barsSmooth[i] = 0
+    bars.value = new Array(BARS).fill(0)
+    animationFrameId = requestAnimationFrame(updateVolume)
+  } catch (e) {
+    alert('Microphone inaccessible ou refusé. Vérifie les permissions.')
   }
-
-  if (audioCtx.state === 'suspended') await audioCtx.resume()
-  isRunning.value = true
-  updateVolume()
 }
 
 function stopAudio() {
-  if (audioCtx && audioCtx.state === 'running') {
-    audioCtx.suspend()
-  }
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-    animationFrameId = null
-  }
-  isRunning.value = false
+  if (audioCtx && audioCtx.state === 'running') audioCtx.suspend()
+  if (animationFrameId) cancelAnimationFrame(animationFrameId)
 }
-
-function toggleStartPause() {
-  if (isRunning.value) {
-    stopAudio()
-  } else {
-    startAudio()
-  }
-}
-
-const dbStyle = computed(() => {
-  const baseSize = 50
-  const size = baseSize + volume.value * 2
-  let color = 'green'
-  if (volumeInt.value >= 70) color = 'red'
-  else if (volumeInt.value >= 50) color = 'orange'
-  return {
-    fontSize: size + 'px',
-    fontWeight: '900',
-    color,
-    textShadow: '2px 2px 6px rgba(0,0,0,0.7)',
-    transition: 'font-size 0.1s, color 0.2s'
-  }
-})
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange)
+  document.addEventListener('mozfullscreenchange', onFullscreenChange)
+  document.addEventListener('MSFullscreenChange', onFullscreenChange)
+  startAudio()
 })
 
 onUnmounted(() => {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop())
-  }
-  if (audioCtx) {
-    audioCtx.close()
-  }
-  if (animationFrameId) {
-    cancelAnimationFrame(animationFrameId)
-  }
   window.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
+  document.removeEventListener('mozfullscreenchange', onFullscreenChange)
+  document.removeEventListener('MSFullscreenChange', onFullscreenChange)
+
+  if (stream) stream.getTracks().forEach(t => t.stop())
+  if (audioCtx) audioCtx.close().catch(() => {})
+  if (animationFrameId) cancelAnimationFrame(animationFrameId)
 })
+
+
 </script>
 
 <style scoped>
 .sonometre-container {
-  width: 100vw;
-  height: 100vh;
-  background-size: cover;
-  background-position: center center;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 2rem;
+  z-index: 1;
+}
+
+/* video de fond */
+.bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  max-width: 100%;
+  max-height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  filter: brightness(0.6);
+}
+
+.volume-display,
+.controls {
+  position: relative;
+  z-index: 2;
+}
+
+/* panneau */
+
+/* remove container visuals around logo */
+.volume-display {
+  width: auto;
+  max-width: 90vw;
+  max-height: 90vh;
+  background: transparent;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
-  user-select: none;
+  justify-content: center;
+  color: #fff;
+  box-sizing: border-box;
 }
 
-.controls {
-  margin-bottom: 2rem;
+/* logo */
+.logo-img {
+  display: block;
+  margin: 0 auto;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  transition: width 0.22s ease, height 0.22s ease, transform 0.12s;
+  will-change: width, height, transform, filter;
+  max-width: 95vw;   /* empêche débordement écran */
+  max-height: 95vh;
 }
 
-button {
-  padding: 0.6rem 1.2rem;
-  font-size: 1.2rem;
-  border-radius: 8px;
-  border: none;
-  background-color: #12c2e9;
-  color: white;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 0 10px #12c2e9aa;
-  transition: background-color 0.3s ease;
-}
-
-button:hover {
-  background-color: #0f9acb;
-}
-
-.volume-display {
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 25px;
-  padding: 3rem 6rem;
+/* equalizer */
+.eq {
+  width: 420px;
+  max-width: 86vw;
+  height: 90px;
+  margin-top: 1rem;
   display: flex;
+  align-items: flex-end;
+  gap: 6px;
   justify-content: center;
-  align-items: center;
-  box-shadow: 0 0 40px #12c2e9bb;
+  pointer-events: none;
 }
 
-.db-value {
-  font-family: 'Arial Black', Arial, sans-serif;
-  line-height: 1;
+.eq-bar {
+  flex: 1 1 auto;
+  background: rgba(255,255,255,0.95);
+  width: 100%;
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(255,255,255,0.06);
+  transform-origin: bottom center;
+  transition: height 0.08s linear;
+  opacity: 0.95;
+}
+
+/* cheat = blue glow + stronger bars */
+.eq.cheat .eq-bar {
+  background: linear-gradient(180deg, rgba(40,180,255,0.95), rgba(0,100,255,0.9));
+  box-shadow: 0 6px 22px rgba(0,140,255,0.45);
+  transition: height 0.06s linear;
+}
+/* subtle top highlight for realism */
+.eq-bar::after {
+  content: '';
+  display: block;
+  height: 6px;
+  width: 100%;
+  margin-top: -6px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.0));
+  opacity: 0.12;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+}
+/* blinking when cheat */
+.logo-img.blinking {
+  animation: logo-blink-blue 0.6s steps(2,start) infinite;
+}
+
+.bar-fill.blinking {
+  animation: logo-blink-blue 0.6s steps(2,start) infinite;
+}
+
+@keyframes logo-blink-blue {
+  0% { opacity: 1; filter: drop-shadow(0 0 20px rgba(0,140,255,0.95)); transform: scale(1); }
+  50% { opacity: 0.25; filter: none; transform: scale(1.06); }
+  100% { opacity: 1; filter: drop-shadow(0 0 20px rgba(0,140,255,0.95)); transform: scale(1); }
+}
+
+/* progress bar */
+.db-bar {
+  width: 100%;
+  height: 18px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 0.6rem;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  transition: width 0.18s linear, background 0.2s;
+}
+
+/* fullscreen padding reset */
+:fullscreen .sonometre-container,
+:-webkit-full-screen .sonometre-container,
+:-moz-full-screen .sonometre-container,
+:-ms-fullscreen .sonometre-container {
+  padding: 0;
 }
 </style>
