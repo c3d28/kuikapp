@@ -23,21 +23,23 @@
           class="anim-card"
         >
           <div class="big-photo" :style="photoStyle(p.photo)"></div>
-
           <div class="big-body">
             <div class="big-name">{{ p.name || ('Joueur ' + (i+1)) }}</div>
             <div class="big-meta">Poste {{ i+1 }} • #{{ p.number || '--' }}</div>
-          </div>
 
-          <div class="stats-panel" :ref="el => statsRefs[i] = el">
-            <div class="stat"><span class="stat-label">PTS</span> <span class="stat-value">{{ p.stats?.pts ?? randomStat(10,28) }}</span></div>
-            <div class="stat"><span class="stat-label">REB</span> <span class="stat-value">{{ p.stats?.reb ?? randomStat(3,14) }}</span></div>
-            <div class="stat"><span class="stat-label">AST</span> <span class="stat-value">{{ p.stats?.ast ?? randomStat(2,12) }}</span></div>
-            <div class="stat small"><span class="stat-label">EFF</span> <span class="stat-value small-val">{{ p.stats?.eff ?? randomStat(5,28) }}</span></div>
+            <!-- moved stats here, just under title/poste -->
+            <div class="stats-panel" :ref="el => statsRefs[i] = el">
+              <div class="stat"><span class="stat-label">PTS</span> <span class="stat-value">{{ p.stats?.pts ?? randomStat(10,28) }}</span></div>
+              <div class="stat"><span class="stat-label">REB</span> <span class="stat-value">{{ p.stats?.reb ?? randomStat(3,14) }}</span></div>
+              <div class="stat"><span class="stat-label">AST</span> <span class="stat-value">{{ p.stats?.ast ?? randomStat(2,12) }}</span></div>
+              <div class="stat small"><span class="stat-label">EFF</span> <span class="stat-value small-val">{{ p.stats?.eff ?? randomStat(5,28) }}</span></div>
+            </div>
           </div>
+          
         </div>
       </div>
     </div>
+    
   </div>
 </template>
 
@@ -225,7 +227,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .live-root { width:100vw; height:100vh; background:transparent; overflow:hidden; display:flex; align-items:center; justify-content:center; }
 .court { position:relative; width:100%; height:100%; }
-.court-bg{ position:absolute; inset:0; background: radial-gradient(circle at 50% 35%, rgba(10,40,80,0.15), rgba(8,12,22,0.8)), linear-gradient(180deg,#07121a,#071a22); filter: contrast(1.02); z-index:1; }
+.court-bg{
+  position:absolute;
+  inset:0;
+  background: radial-gradient(circle at 50% 35%, rgba(10,40,80,0.15), rgba(8,12,22,0.8)),
+              linear-gradient(180deg,#07121a,#071a22);
+  filter: contrast(1.02);
+  z-index:1;
+}
 
 /* slots and final small cards */
 .slots{ position:absolute; inset:0; z-index:4; pointer-events:none; display:block; }
@@ -267,22 +276,129 @@ onBeforeUnmount(() => {
 .big-meta{ font-size:1.05rem; color:#cfe8ff; }
 
 .stats-panel{
-  position:absolute; right:6%; top:50%; transform:translateY(-50%);
-  background:linear-gradient(180deg, rgba(2,20,40,0.6), rgba(1,10,25,0.55));
-  padding:22px; border-radius:12px; color:#dff2ff; min-width:240px; box-shadow: 0 18px 42px rgba(0,0,0,0.6);
-  opacity:0;
+  position: static; /* was absolute */
+  margin-top: 12px;
+  align-self: flex-end; /* push to the right inside .big-body */
+  background: linear-gradient(180deg, rgba(2,20,40,0.6), rgba(1,10,25,0.55));
+  padding: 18px 20px;
+  border-radius:12px;
+  color:#dff2ff;
+  min-width:220px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.6);
+  opacity:1; /* controlled by GSAP, keep visible by default */
+  transform: none;
 }
-.stat{ display:flex; justify-content:space-between; gap:12px; padding:8px 0; font-weight:800; font-size:1.3rem; }
+.stat{ display:flex; justify-content:space-between; gap:12px; padding:6px 0; font-weight:800; font-size:1.15rem; }
 .stat .stat-label{ color:#9fbfdc; font-weight:700; margin-right:8px; }
-.stat .stat-value{ color:#fff; font-weight:900; font-size:1.45rem; }
-.stat.small{ font-size:1.05rem; opacity:0.9 }
-.small-val{ font-size:1.15rem; }
+.stat .stat-value{ color:#fff; font-weight:900; font-size:1.25rem; }
+.stat.small{ font-size:1rem; opacity:0.95 }
+.small-val{ font-size:1.05rem; }
 
+/* responsive: hide stats on small screens to avoid overflow */
 @media (max-width:1100px){
-  .anim-card{ width:86vw; height:64vh; }
-  .big-name{ font-size:2.2rem; }
   .stats-panel{ display:none; }
-  .slot{ width:120px; height:170px; }
-  .final-card{ width:120px; height:170px; }
+  .anim-card{ width:90vw; height:60vh; }
+  .big-name{ font-size:2.2rem; }
+  .slot{ width:120px; height:160px; }
+  .final-card{ width:120px; height:160px; }
+  .final-photo{ height:90px; }
+}
+</style>
+// ...existing code...
+```// filepath: c:\DEVELOPPEMENT\GameDeJeu\src\components\TipoffLive.vue
+// ...existing code...
+<style scoped>
+.live-root { width:100vw; height:100vh; background:transparent; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+.court { position:relative; width:100%; height:100%; }
+.court-bg{
+  position:absolute;
+  inset:0;
+  background: radial-gradient(circle at 50% 35%, rgba(10,40,80,0.15), rgba(8,12,22,0.8)),
+              linear-gradient(180deg,#07121a,#071a22);
+  filter: contrast(1.02);
+  z-index:1;
+}
+
+/* slots and final small cards */
+.slots{ position:absolute; inset:0; z-index:4; pointer-events:none; display:block; }
+.slot{
+  position:absolute;
+  width:220px;
+  height:300px;
+  left:50%;
+  top:12%;
+  transform:translate(-50%,-50%);
+}
+/* ajuste légèrement les positions sémantiques si besoin */
+.slot[data-pos="PG"]{ left:50%; top:18%; }
+.slot[data-pos="SG"]{ left:82%; top:36%; }
+.slot[data-pos="SF"]{ left:18%; top:36%; }
+.slot[data-pos="PF"]{ left:30%; top:68%; }
+.slot[data-pos="C"] { left:52%; top:76%; }
+
+.final-card{
+  width:220px;
+  height:300px;
+  border-radius:14px;
+  overflow:hidden;  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  display:flex; flex-direction:column; align-items:center; padding-top:10px;
+  border:1px solid rgba(255,255,255,0.03); box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+  color:#eaf6ff; font-weight:700;
+  opacity: 0;
+  transform: scale(0.96);
+}
+.final-photo{   width:86%;
+  height:160px;
+  border-radius:10px;
+  background-size:cover;
+  background-position:center;
+  margin-bottom:10px;
+}
+
+.final-photo-img{ width:100%; height:100%; object-fit:cover; }
+
+/* animated cards */
+.anim-layer{ position:absolute; inset:0; z-index:8; pointer-events:none; }
+
+.anim-card{
+  width:60vw; max-width:980px; height:56vh; max-height:760px;
+  border-radius:14px; overflow:hidden; display:flex; gap:18px; align-items:stretch;
+  background:linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+  box-shadow: 0 40px 110px rgba(0,0,0,0.8);
+  position:absolute;
+}
+
+.big-photo{ width:58%; height:100%; background-size:cover; background-position:center; }
+.big-body{ padding:28px; display:flex; flex-direction:column; justify-content:center; gap:8px; flex:1; }
+.big-name{ font-size:3.2rem; font-weight:900; color:#fff; line-height:1; }
+.big-meta{ font-size:1.05rem; color:#cfe8ff; }
+
+.stats-panel{
+  position: static; /* was absolute */
+  margin-top: 12px;
+  align-self: flex-end; /* push to the right inside .big-body */
+  background: linear-gradient(180deg, rgba(2,20,40,0.6), rgba(1,10,25,0.55));
+  padding: 18px 20px;
+  border-radius:12px;
+  color:#dff2ff;
+  min-width:220px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.6);
+  opacity:1; /* controlled by GSAP, keep visible by default */
+  transform: none;
+}
+.stat{ display:flex; justify-content:space-between; gap:12px; padding:6px 0; font-weight:800; font-size:1.15rem; }
+.stat .stat-label{ color:#9fbfdc; font-weight:700; margin-right:8px; }
+.stat .stat-value{ color:#fff; font-weight:900; font-size:1.25rem; }
+.stat.small{ font-size:1rem; opacity:0.95 }
+.small-val{ font-size:1.05rem; }
+
+/* responsive: hide stats on small screens to avoid overflow */
+@media (max-width:1100px){
+  .stats-panel{ display:none; }
+  .anim-card{ width:90vw; height:60vh; }
+  .big-name{ font-size:2.2rem; }
+  .slot{ width:160px; height:220px; }
+  .final-card{ width:160px; height:220px; }
+  .final-photo{ height:120px; }
 }
 </style>

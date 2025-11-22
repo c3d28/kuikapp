@@ -26,14 +26,14 @@ const routes = [
   {
     path: '/sonometre',
     name: 'sonometre-dashboard',
-    component: DashboardDenain
+    component: DenainVoltaire
   },
 
   // actual standalone sonometre app (monitor)
   {
     path: '/denain-voltaire',
     name: 'denain-voltaire',
-    component: DenainVoltaire
+    component: DashboardDenain
   },
 
   {
