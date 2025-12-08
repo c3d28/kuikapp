@@ -1,58 +1,82 @@
 <template>
-  <div class="tipoff-root">
-    <header class="tipoff-header">
-      <h2>Tipoff — Gestion 5 majeurs</h2>
-      <div class="tabs">
-        <button :class="{active: mode==='manage'}" @click="mode='manage'">Manage</button>
-        <button :class="{active: mode==='live'}" @click="mode='live'">Live</button>
+  <div class="tipoff-root container">
+    <header class="tipoff-header py-5">
+      <div class="level">
+        <div class="level-left">
+          <div>
+            <h2 class="title is-4">Tipoff — Gestion 5 majeurs</h2>
+            <p class="subtitle is-6">Définis les 5 joueurs et les timings d'animation</p>
+          </div>
+        </div>
+        <div class="level-right">
+          <div class="tabs is-toggle is-toggle-rounded">
+            <ul>
+              <li :class="{ 'is-active': mode==='manage' }"><a @click="mode='manage'">Manage</a></li>
+              <li :class="{ 'is-active': mode==='live' }"><a @click="mode='live'">Live</a></li>
+            </ul>
+          </div>
+        </div>
       </div>
     </header>
 
-    <section v-if="mode === 'manage'" class="manage">
-      <p>Définis les 5 joueurs (poste 1→5). Les changements sont sauvegardés localement (session).</p>
+    <section v-if="mode === 'manage'" class="manage box">
+      <p class="mb-4">Les changements sont sauvegardés localement (session).</p>
 
-      <div class="timing">
-        <h4>Timing / animation</h4>
-        <div class="timing-row">
-          <label>Stagger (ms)</label>
-          <input type="number" v-model.number="settings.stagger" />
-        </div>
-        <div class="timing-row">
-          <label>Stats visible (ms)</label>
-          <input type="number" v-model.number="settings.statsDuration" />
-        </div>
-        <div class="timing-row">
-          <label>Move duration (ms)</label>
-          <input type="number" v-model.number="settings.moveDuration" />
+      <div class="timing box">
+        <h4 class="title is-6">Timing / animation</h4>
+        <div class="columns is-mobile is-multiline">
+          <div class="column is-4">Stagger (ms)</div>
+          <div class="column is-8"><input class="input" type="number" v-model.number="settings.stagger" /></div>
+
+          <div class="column is-4">Stats visible (ms)</div>
+          <div class="column is-8"><input class="input" type="number" v-model.number="settings.statsDuration" /></div>
+
+          <div class="column is-4">Move duration (ms)</div>
+          <div class="column is-8"><input class="input" type="number" v-model.number="settings.moveDuration" /></div>
         </div>
       </div>
 
       <form @submit.prevent="save">
-        <div v-for="(p, i) in players" :key="i" class="player-row">
-          <div class="pos">Poste {{ i+1 }}</div>
-          <input v-model="p.name" placeholder="Nom du joueur" />
-          <input v-model="p.number" placeholder="N°" class="num" />
-          <input v-model="p.photo" placeholder="URL image (optionnel)" />
-          <button type="button" class="small" @click="resetPlayer(i)">Reset</button>
+        <div v-for="(p, i) in players" :key="i" class="player-row box mb-3">
+          <div class="columns is-vcentered is-mobile">
+            <div class="column is-narrow">
+              <div class="tag is-dark is-medium">Poste {{ i+1 }}</div>
+            </div>
+
+            <div class="column">
+              <input class="input" v-model="p.name" placeholder="Nom du joueur" />
+            </div>
+
+            <div class="column is-narrow" style="max-width:90px">
+              <input class="input" v-model="p.number" placeholder="N°" />
+            </div>
+
+            <div class="column">
+              <input class="input" v-model="p.photo" placeholder="URL image (optionnel)" />
+            </div>
+
+            <div class="column is-narrow">
+              <button type="button" class="button is-small is-light" @click="resetPlayer(i)">Reset</button>
+            </div>
+          </div>
         </div>
 
-        <div class="manage-actions">
-          <button type="button" @click="startLive">Aller en Live</button>
-          <button type="button" @click="save">Enregistrer</button>
-          <button type="button" @click="loadDefaults">Defaults rapides</button>
-          <button type="button" @click="saveSettings">Enregistrer settings</button>
-          <button type="button" @click="loadSettings">Charger settings</button>
+        <div class="manage-actions buttons">
+          <button type="button" class="button is-primary" @click="startLive">Aller en Live</button>
+          <button type="button" class="button is-info" @click="save">Enregistrer</button>
+          <button type="button" class="button is-light" @click="loadDefaults">Defaults rapides</button>
+          <button type="button" class="button" @click="saveSettings">Enregistrer settings</button>
+          <button type="button" class="button" @click="loadSettings">Charger settings</button>
         </div>
       </form>
 
-      <p class="hint">Raccourcis (globales) : SPACE = relancer, S = stop, R = reprendre, Z = retour arrière</p>
+      <p class="hint mt-4">Raccourcis : SPACE = relancer, S = stop, R = reprendre, Z = retour arrière</p>
     </section>
 
-    <section v-else class="live">
-      <!-- no buttons as requested; live will be on its own route or opened fullscreen -->
+    <section v-else class="live box">
       <p>Mode Live (plein écran). La page Live utilise les settings définis ici.</p>
-      <div class="manage-actions">
-        <router-link class="quick" :to="{ name: 'tipoff-live' }">Ouvrir le Live (plein écran)</router-link>
+      <div class="manage-actions mt-3">
+        <router-link class="button is-primary" :to="{ name: 'tipoff-live' }">Ouvrir le Live (plein écran)</router-link>
       </div>
     </section>
   </div>
@@ -138,10 +162,11 @@ onMounted(()=>{
 </script>
 
 <style scoped>
-/* ... keep existing styles, add timing styles */
-.timing { margin: 12px 0 16px 0; background: rgba(255,255,255,0.02); padding:10px; border-radius:8px; }
-.timing-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-.timing-row label { width:150px; color:#9fbfdc }
-.timing-row input { flex:1; padding:6px 8px; border-radius:6px; border:0; background:rgba(255,255,255,0.03); color:#eaf6ff; }
-.hint { margin-top:8px; color:#9fbfdc; font-size:0.9rem }
+.tipoff-root { padding-top: 18px; padding-bottom: 28px; color: #eaf6ff; }
+.tipoff-header { border-bottom: 1px solid rgba(255,255,255,0.04); }
+.player-row .input { background: rgba(255,255,255,0.02); color: #eaf6ff; }
+.box { background: linear-gradient(180deg, #07121a 0%, #0b1720 100%); border: 1px solid rgba(255,255,255,0.03); }
+.hint { color:#9fbfdc; font-size:0.9rem; }
+.tabs a { color:#eaf6ff; }
+.button.is-primary { background-color:#c9181e; border-color: transparent; color:#fff; }
 </style>
