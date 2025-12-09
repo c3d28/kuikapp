@@ -5,7 +5,7 @@
         <div class="level-left">
           <div>
             <h2 class="title is-4">Tipoff — Gestion 5 majeurs</h2>
-            <p class="subtitle is-6">Définis les 5 joueurs et les timings d'animation</p>
+            <p class="subtitle is-6">Définis les joueurs et le thème live</p>
           </div>
         </div>
         <div class="level-right">
@@ -33,6 +33,34 @@
 
           <div class="column is-4">Move duration (ms)</div>
           <div class="column is-8"><input class="input" type="number" v-model.number="settings.moveDuration" /></div>
+        </div>
+      </div>
+
+      <div class="appearance box">
+        <h4 class="title is-6">Apparence Live</h4>
+        <div class="field">
+          <label class="label">Thème</label>
+          <div class="control">
+            <div class="select">
+              <select v-model="settings.theme">
+                <option value="blue">Bleu (par défaut)</option>
+                <option value="red">Rouge</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="label">Image de fond (URL)</label>
+          <div class="control">
+            <input class="input" placeholder="https://..." v-model="settings.background" />
+          </div>
+          <p class="hint">Laisser vide pour utiliser le dégradé du thème.</p>
+        </div>
+
+        <div class="buttons mt-3">
+          <button class="button is-primary" @click="saveSettings">Enregistrer le thème</button>
+          <button class="button is-light" @click="loadSettings">Restaurer</button>
         </div>
       </div>
 
@@ -65,8 +93,6 @@
           <button type="button" class="button is-primary" @click="startLive">Aller en Live</button>
           <button type="button" class="button is-info" @click="save">Enregistrer</button>
           <button type="button" class="button is-light" @click="loadDefaults">Defaults rapides</button>
-          <button type="button" class="button" @click="saveSettings">Enregistrer settings</button>
-          <button type="button" class="button" @click="loadSettings">Charger settings</button>
         </div>
       </form>
 
@@ -81,11 +107,13 @@
     </section>
   </div>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const mode = ref('manage')
+// agrandi à 5 lignes de joueurs
 const players = reactive([
   { name: '', number: '', photo: '' },
   { name: '', number: '', photo: '' },
@@ -94,35 +122,37 @@ const players = reactive([
   { name: '', number: '', photo: '' }
 ])
 
-const defaultSettings = { stagger: 900, statsDuration: 720, moveDuration: 800 }
+const defaultSettings = { stagger: 900, statsDuration: 720, moveDuration: 800, theme: 'blue', background: '' }
 const settings = reactive(JSON.parse(JSON.stringify(defaultSettings)))
 
 function save(){
-  sessionStorage.setItem('tipoff_players', JSON.stringify(players))
-  alert('Joueurs enregistrés')
+  try { sessionStorage.setItem('tipoff_players', JSON.stringify(players)) } catch {}
 }
 function load(){
-  try{
+  try {
     const raw = sessionStorage.getItem('tipoff_players')
-    if(!raw) return
+    if (!raw) return
     const arr = JSON.parse(raw)
-    for(let i=0;i<5;i++){
-      players[i].name = arr[i]?.name || players[i].name
-      players[i].number = arr[i]?.number || players[i].number
-      players[i].photo = arr[i]?.photo || players[i].photo
+    for (let i=0;i<players.length;i++){
+      if (!arr[i]) continue
+      players[i].name = arr[i].name || players[i].name
+      players[i].number = arr[i].number || players[i].number
+      players[i].photo = arr[i].photo || players[i].photo
     }
   } catch {}
 }
+
+// génère un prénom aléatoire simple
+function getRandomName(){
+  const sample = ['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Goliath','Hector','Icare','Jules']
+  return sample[Math.floor(Math.random()*sample.length)]
+}
 function loadDefaults(){
-  const def = [
-    { name: 'Théo L.', number: '4', photo: '' },
-    { name: 'Lucas R.', number: '8', photo: '' },
-    { name: 'Mika B.', number: '12', photo: '' },
-    { name: 'Adrien P.', number: '22', photo: '' },
-    { name: 'Olivier M.', number: '7', photo: '' }
-  ]
-  for (let i = 0; i < 5; i++) Object.assign(players[i], def[i])
-  save()
+  for (let i=0;i<players.length;i++){
+    players[i].name = getRandomName()
+    players[i].number = ''
+    players[i].photo = ''
+  }
 }
 function resetPlayer(i){
   players[i].name = ''
@@ -131,27 +161,25 @@ function resetPlayer(i){
 }
 
 function startLive(){
-  // ensure players + settings saved then navigate to live
   save()
   saveSettings()
-  // navigate to live route
-  window.location.href = '/tipoff/live'
+  router.push({ name: 'tipoff-live' })
 }
 
 /* settings persistence */
 function saveSettings(){
-  sessionStorage.setItem('tipoff_settings', JSON.stringify(settings))
-  alert('Settings enregistrés')
+  try { sessionStorage.setItem('tipoff_settings', JSON.stringify(settings)) } catch {}
 }
 function loadSettings(){
-  try{
+  try {
     const raw = sessionStorage.getItem('tipoff_settings')
-    if(!raw) { Object.assign(settings, defaultSettings); return }
+    if (!raw) return
     const s = JSON.parse(raw)
-    settings.stagger = s.stagger ?? defaultSettings.stagger
-    settings.statsDuration = s.statsDuration ?? defaultSettings.statsDuration
-    settings.moveDuration = s.moveDuration ?? defaultSettings.moveDuration
-    alert('Settings chargés')
+    settings.stagger = s.stagger ?? settings.stagger
+    settings.statsDuration = s.statsDuration ?? settings.statsDuration
+    settings.moveDuration = s.moveDuration ?? settings.moveDuration
+    settings.theme = s.theme ?? settings.theme
+    settings.background = s.background ?? settings.background
   } catch {}
 }
 
