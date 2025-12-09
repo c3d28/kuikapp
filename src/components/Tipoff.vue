@@ -5,7 +5,7 @@
         <div class="level-left">
           <div>
             <h2 class="title is-4">Tipoff — Gestion 5 majeurs</h2>
-            <p class="subtitle is-6">Définis les joueurs et le thème live</p>
+            <p class="subtitle is-6">Définis les joueurs, les stats et le thème live</p>
           </div>
         </div>
         <div class="level-right">
@@ -87,6 +87,26 @@
               <button type="button" class="button is-small is-light" @click="resetPlayer(i)">Reset</button>
             </div>
           </div>
+
+          <!-- stats per ligne -->
+          <div class="columns is-mobile mt-3 stats-row">
+            <div class="column is-narrow">
+              <label class="label is-small">PTS</label>
+              <input class="input" type="number" v-model.number="p.stats.pts" />
+            </div>
+            <div class="column is-narrow">
+              <label class="label is-small">REB</label>
+              <input class="input" type="number" v-model.number="p.stats.reb" />
+            </div>
+            <div class="column is-narrow">
+              <label class="label is-small">AST</label>
+              <input class="input" type="number" v-model.number="p.stats.ast" />
+            </div>
+            <div class="column is-narrow">
+              <label class="label is-small">EFF</label>
+              <input class="input" type="number" v-model.number="p.stats.eff" />
+            </div>
+          </div>
         </div>
 
         <div class="manage-actions buttons">
@@ -107,19 +127,20 @@
     </section>
   </div>
 </template>
+
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const mode = ref('manage')
-// agrandi à 5 lignes de joueurs
+// 5 lignes de joueurs avec objet stats
 const players = reactive([
-  { name: '', number: '', photo: '' },
-  { name: '', number: '', photo: '' },
-  { name: '', number: '', photo: '' },
-  { name: '', number: '', photo: '' },
-  { name: '', number: '', photo: '' }
+  { name: '', number: '', photo: '', stats: { pts: null, reb: null, ast: null, eff: null } },
+  { name: '', number: '', photo: '', stats: { pts: null, reb: null, ast: null, eff: null } },
+  { name: '', number: '', photo: '', stats: { pts: null, reb: null, ast: null, eff: null } },
+  { name: '', number: '', photo: '', stats: { pts: null, reb: null, ast: null, eff: null } },
+  { name: '', number: '', photo: '', stats: { pts: null, reb: null, ast: null, eff: null } }
 ])
 
 const defaultSettings = { stagger: 900, statsDuration: 720, moveDuration: 800, theme: 'blue', background: '' }
@@ -135,9 +156,10 @@ function load(){
     const arr = JSON.parse(raw)
     for (let i=0;i<players.length;i++){
       if (!arr[i]) continue
-      players[i].name = arr[i].name || players[i].name
-      players[i].number = arr[i].number || players[i].number
-      players[i].photo = arr[i].photo || players[i].photo
+      players[i].name = arr[i].name ?? players[i].name
+      players[i].number = arr[i].number ?? players[i].number
+      players[i].photo = arr[i].photo ?? players[i].photo
+      players[i].stats = arr[i].stats ?? players[i].stats
     }
   } catch {}
 }
@@ -147,17 +169,27 @@ function getRandomName(){
   const sample = ['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Goliath','Hector','Icare','Jules']
   return sample[Math.floor(Math.random()*sample.length)]
 }
+function getRandomStat(min=5, max=25){
+  return Math.floor(Math.random()*(max-min+1))+min
+}
 function loadDefaults(){
   for (let i=0;i<players.length;i++){
     players[i].name = getRandomName()
     players[i].number = ''
     players[i].photo = ''
+    players[i].stats = {
+      pts: getRandomStat(10,28),
+      reb: getRandomStat(3,14),
+      ast: getRandomStat(2,12),
+      eff: getRandomStat(5,28)
+    }
   }
 }
 function resetPlayer(i){
   players[i].name = ''
   players[i].number = ''
   players[i].photo = ''
+  players[i].stats = { pts: null, reb: null, ast: null, eff: null }
 }
 
 function startLive(){
@@ -197,4 +229,8 @@ onMounted(()=>{
 .hint { color:#9fbfdc; font-size:0.9rem; }
 .tabs a { color:#eaf6ff; }
 .button.is-primary { background-color:#c9181e; border-color: transparent; color:#fff; }
+
+/* compact stats row */
+.stats-row .label { font-size:0.8rem; color:#cfe8ff; margin-bottom:6px; }
+.stats-row .input { width:80px; }
 </style>
