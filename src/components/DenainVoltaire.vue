@@ -12,20 +12,19 @@
       aria-hidden="true"
     ></video>
 
-    <div class="controls">
-      <!-- ...existing code... -->
-    </div>
-
     <div class="volume-display">
-      <img
-        :src="logoUrl"
-        alt="logo"
-        class="logo-img"
-        :class="{ blinking: cheatActive }"
-        :style="logoStyle"
-      />
+      <!-- reserve a fixed box for the logo to avoid layout shifts -->
+      <div class="logo-box" :style="{ height: logoMinSize + 'px' }">
+        <img
+          :src="logoUrl"
+          alt="logo"
+          class="logo-img"
+          :class="{ blinking: cheatActive }"
+          :style="logoStyle"
+        />
+      </div>
 
-      <!-- égaliseur visuel (remplace la barre) -->
+      <!-- égaliseur visuel -->
       <div v-if="showBar" class="eq" :class="{ cheat: cheatActive }" aria-hidden="true">
         <div
           v-for="(h, i) in bars"
@@ -34,11 +33,6 @@
           :style="{ height: h + '%' }"
         ></div>
       </div>
-
-      <!-- barre de niveau, affichable / masquable par double "b" 
-      <div v-if="showBar" class="db-bar">
-        <div class="bar-fill" :class="{ blinking: cheatActive }" :style="barStyle"></div>
-      </div>-->
     </div>
   </div>
 </template>
@@ -47,7 +41,6 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import sonometreBg from '@/assets/sonometre-bg.mp4'
 import logoKrys from '@/assets/logo_krys_old.svg'
-
 
 const backgroundUrl = ref(sonometreBg)
 const root = ref(null)
@@ -65,18 +58,19 @@ const cheatActive = ref(false)
 const sessionMax = ref(0)
 const cheatRamp = ref(0)
 const cheatTarget = ref(0)
+// cheat scale expressed as percentage 0..100
 const CHEAT_LIMIT = 120
 
 // equalizer config
 const BARS = 16
 const bars = ref(new Array(BARS).fill(0))
 const _barsSmooth = new Array(BARS).fill(0)
-const BAR_SMOOTH_ALPHA = 0.22
+const BAR_SMOOTH_ALPHA = 0.18
 
-// logo sizing
-const logoMinSize = 500     // <-- augmenté (taille de départ)
-const LOGO_SCALE = 6.0      // <-- multiplicateur d'agrandissement par dB
-const logoLimit = 1400      // <-- plafond plus grand
+// logo sizing (reduced default)
+const logoMinSize = 260
+const LOGO_SCALE = 3.2
+const logoLimit = 800
 const logoMaxSize = ref(logoMinSize)
 const lastLogoMax = ref(logoMinSize)
 
@@ -122,7 +116,6 @@ function onFullscreenChange() {
 
 // update logo visual sizing (keeps previous "peak" behaviour)
 function updateLogoSize(currentDb) {
-  // apply stronger scaling, clamp to logoLimit
   const newSize = Math.min(logoLimit, Math.round(logoMinSize + currentDb * LOGO_SCALE))
   if (newSize > lastLogoMax.value) {
     lastLogoMax.value = newSize
@@ -132,6 +125,7 @@ function updateLogoSize(currentDb) {
     logoMaxSize.value = lastLogoMax.value
   }
 }
+
 function onKeyDown(event) {
   const key = event.key?.toLowerCase()
   if (!key) return
@@ -169,18 +163,23 @@ function onKeyDown(event) {
   }
 }
 
-// style pour le logo (taille animée)
-const logoStyle = computed(() => ({
-  width: Math.round(logoMaxSize.value) + 'px',
-  height: Math.round(logoMaxSize.value) + 'px',
-  transition: cheatActive.value ? 'width 0.12s linear, height 0.12s linear, transform 0.12s' : 'width 0.22s ease, height 0.22s ease'
-}))
+// logoStyle uses transform:scale to avoid layout shifts
+const logoStyle = computed(() => {
+  const base = logoMinSize || 500
+  const rawScale = (logoMaxSize.value || base) / base
+  const clamped = Math.max(0.5, Math.min(logoLimit / base, rawScale))
+  return {
+    transform: `scale(${clamped.toFixed(3)})`,
+    transition: cheatActive.value ? 'transform 0.12s linear' : 'transform 0.22s ease',
+    willChange: 'transform'
+  }
+})
 
 // audio processing
 let smooth = 0
 const SMOOTH_ALPHA = 0.12
-const CHEAT_RAMP_FACTOR = 0.06
-
+// make cheat ramp a bit faster for visible effect
+const CHEAT_RAMP_FACTOR = 0.12
 
 function updateVolume() {
   // cheat ramp: keep bars and logo ramping from current to target
@@ -190,9 +189,9 @@ function updateVolume() {
     volumeInt.value = val
     if (volumeInt.value > sessionMax.value) sessionMax.value = volumeInt.value
     updateLogoSize(volumeInt.value)
-    // set bars to high values (smooth appearance)
+    // push bars toward full using faster interpolation in cheat mode
     for (let i = 0; i < BARS; i++) {
-      _barsSmooth[i] += (100 - _barsSmooth[i]) * 0.18
+      _barsSmooth[i] += (100 - _barsSmooth[i]) * 0.28
       bars.value[i] = Math.round(_barsSmooth[i])
     }
     animationFrameId = requestAnimationFrame(updateVolume)
@@ -204,16 +203,12 @@ function updateVolume() {
     return
   }
 
-  // frequency data -> realistic equalizer
   const freq = new Uint8Array(analyser.frequencyBinCount)
   analyser.getByteFrequencyData(freq)
 
-  // debug: uncomment to inspect freq data
-  // console.log('freq len', freq.length, 'max', Math.max(...freq))
-
-  // map frequency bins to BARS groups
-  const binsPerBar = Math.floor(freq.length / BARS) || 1
-  // if input is silent (all zeros) provide a subtle ambient motion so EQ doesn't freeze
+  // LOG-spaced grouping to spread energy across bars
+  const minIndex = 2
+  const maxIndex = Math.max(3, freq.length - 1)
   const maxVal = Math.max(...freq)
   if (maxVal === 0) {
     for (let i = 0; i < BARS; i++) {
@@ -222,26 +217,29 @@ function updateVolume() {
     }
   } else {
     for (let i = 0; i < BARS; i++) {
+      const start = Math.floor(minIndex * Math.pow(maxIndex / minIndex, i / BARS))
+      const end = Math.floor(minIndex * Math.pow(maxIndex / minIndex, (i + 1) / BARS))
       let sum = 0
-      const start = i * binsPerBar
-      const end = Math.min(freq.length, start + binsPerBar)
-      for (let j = start; j < end; j++) sum += freq[j]
-      const avg = sum / (end - start || 1)
-      // avg is 0..255 -> map to 0..100
-      const pct = Math.min(100, Math.max(0, (avg / 255) * 100))
-      // per-bar smoothing (EMA)
+      let count = 0
+      for (let j = start; j <= end && j < freq.length; j++) {
+        sum += freq[j]
+        count++
+      }
+      const avg = count ? (sum / count) : 0
+      let pct = Math.min(100, Math.max(0, (avg / 255) * 100))
+      // small boost for higher bands where values tend to be lower
+      const boost = 1 + Math.max(0, 0.22 - (i / BARS) * 0.12)
+      pct = Math.min(100, pct * boost)
       _barsSmooth[i] = _barsSmooth[i] * (1 - BAR_SMOOTH_ALPHA) + pct * BAR_SMOOTH_ALPHA
       bars.value[i] = Math.round(_barsSmooth[i])
     }
   }
 
   // compute an overall db-like value from low/mid energy for logo sizing
-  // take average of lower/mid bands to represent loudness
   const lowCount = Math.max(1, Math.floor(BARS * 0.6))
   let sumLow = 0
   for (let i = 0; i < lowCount; i++) sumLow += bars.value[i]
-  const loud = Math.round(sumLow / lowCount) // 0..100
-  // scale to CHEAT_LIMIT
+  const loud = Math.round(sumLow / lowCount)
   const scaled = Math.min(CHEAT_LIMIT, Math.round((loud / 100) * CHEAT_LIMIT))
   volumeInt.value = scaled
   if (volumeInt.value > sessionMax.value) sessionMax.value = volumeInt.value
@@ -253,7 +251,6 @@ function updateVolume() {
 async function startAudio() {
   if (audioCtx && audioCtx.state === 'running') return
   try {
-    // try to get raw mic data
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -266,18 +263,16 @@ async function startAudio() {
     source = audioCtx.createMediaStreamSource(stream)
 
     gainNode = audioCtx.createGain()
-    gainNode.gain.value = 4.0 // adjust if needed
+    gainNode.gain.value = 4.0
 
     analyser = audioCtx.createAnalyser()
-    // FFT size controls frequencyBinCount = fftSize / 2
-    // 1024 gives faster updates while keeping decent resolution
-    analyser.fftSize = 1024
+    // augmenter la résolution pour mieux répartir l'énergie sur les bins
+    analyser.fftSize = 2048
     analyser.smoothingTimeConstant = 0.6
 
     source.connect(gainNode)
     gainNode.connect(analyser)
 
-    // reset state
     sessionMax.value = 0
     lastLogoMax.value = logoMinSize
     logoMaxSize.value = logoMinSize
@@ -314,8 +309,6 @@ onUnmounted(() => {
   if (audioCtx) audioCtx.close().catch(() => {})
   if (animationFrameId) cancelAnimationFrame(animationFrameId)
 })
-
-
 </script>
 
 <style scoped>
@@ -354,8 +347,6 @@ onUnmounted(() => {
 }
 
 /* panneau */
-
-/* remove container visuals around logo */
 .volume-display {
   width: auto;
   max-width: 90vw;
@@ -370,24 +361,31 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-/* logo */
-.logo-img {
-  display: block;
-  margin: 0 auto;
+/* wrapper that reserves vertical space so eq doesn't move */
+.logo-box{
+  display:flex;
+  align-items:center;
+  justify-content:center;
   width: auto;
-  height: auto;
-  object-fit: contain;
-  transition: width 0.22s ease, height 0.22s ease, transform 0.12s;
-  will-change: width, height, transform, filter;
-  max-width: 95vw;   /* empêche débordement écran */
-  max-height: 95vh;
+  overflow: visible; /* allow scaled logo to overflow the reserved box visually without changing layout */
+  margin-bottom: 8px;
+}
+
+/* logo now sized by container height + transform, avoid width/height changes */
+.logo-img {
+  height: 100%;
+  width: auto;
+  max-height: 100%;
+  transform-origin: center center;
+  will-change: transform;
+  display:block;
 }
 
 /* equalizer */
 .eq {
-  width: 420px;
-  max-width: 86vw;
-  height: 90px;
+  width: 96vw;
+  max-width: 920px;
+  height: 140px;
   margin-top: 1rem;
   display: flex;
   align-items: flex-end;
@@ -395,25 +393,23 @@ onUnmounted(() => {
   justify-content: center;
   pointer-events: none;
 }
-
 .eq-bar {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-width: 0;
   background: rgba(255,255,255,0.95);
-  width: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
   box-shadow: 0 4px 12px rgba(255,255,255,0.06);
   transform-origin: bottom center;
-  transition: height 0.08s linear;
-  opacity: 0.95;
+  transition: height 0.06s linear;
+  opacity: 0.98;
 }
 
-/* cheat = blue glow + stronger bars */
+/* cheat styling */
 .eq.cheat .eq-bar {
   background: linear-gradient(180deg, rgba(40,180,255,0.95), rgba(0,100,255,0.9));
   box-shadow: 0 6px 22px rgba(0,140,255,0.45);
   transition: height 0.06s linear;
 }
-/* subtle top highlight for realism */
 .eq-bar::after {
   content: '';
   display: block;
@@ -425,35 +421,13 @@ onUnmounted(() => {
   border-top-left-radius: 3px;
   border-top-right-radius: 3px;
 }
-/* blinking when cheat */
 .logo-img.blinking {
   animation: logo-blink-blue 0.6s steps(2,start) infinite;
 }
-
-.bar-fill.blinking {
-  animation: logo-blink-blue 0.6s steps(2,start) infinite;
-}
-
 @keyframes logo-blink-blue {
   0% { opacity: 1; filter: drop-shadow(0 0 20px rgba(0,140,255,0.95)); transform: scale(1); }
   50% { opacity: 0.25; filter: none; transform: scale(1.06); }
   100% { opacity: 1; filter: drop-shadow(0 0 20px rgba(0,140,255,0.95)); transform: scale(1); }
-}
-
-/* progress bar */
-.db-bar {
-  width: 100%;
-  height: 18px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-top: 0.6rem;
-}
-
-.bar-fill {
-  height: 100%;
-  width: 0%;
-  transition: width 0.18s linear, background 0.2s;
 }
 
 /* fullscreen padding reset */

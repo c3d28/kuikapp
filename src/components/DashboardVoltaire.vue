@@ -21,7 +21,7 @@
       <section class="quick-links">
         <h4>Raccourcis</h4>
         <div class="links">
-          <router-link to="/denain-voltaire" class="quick">Ouvrir Sonomètre</router-link>
+          <router-link to="/sonometre" class="quick">Ouvrir Sonomètre</router-link>
           <router-link to="/ticket-gagnant" class="quick">Ouvrir Ticket Gagnant</router-link>
           <router-link to="/sosie-cam" class="quick">Ouvrir Sosie Cam</router-link>
           <router-link to="/tipoff" class="quick">Ouvrir Tipoff</router-link>
